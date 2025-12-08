@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Ccircle cx='58' cy='58' r='28' fill='none' stroke='%230f172a' stroke-width='10'/%3E%3Cpath d='M78 78l22 22' stroke='%230f172a' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E">
+  <title>Search</title>
+  <style>
+    :root {
+      --font-size: clamp(28px, 4vw + 1vh, 72px);
+      --container-width: 1000px;
+      --cursor-gap: 15px;
+      --caret-color: #1a1a1a;
+      --flash-color: #1a1a1a;
+    }
+
+    body {
+      --bg: #ffffff;
+      --text: #1a1a1a;
+      --caret-color: #1a1a1a;
+      --ghost: #a0a0a0;
+      --glow: rgba(0,0,0,0.05);
+      margin: 0;
+      min-height: 100dvh;
+      min-width: 320px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      padding-top: 32vh;
+      background: var(--bg);
+      font-family: "Menlo", "Monaco", "Consolas", "Courier New", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", monospace;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow: hidden;
+      opacity: 1;
+      transform: scale(1);
+      transition: background 0.5s ease, opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    body.dark {
+      --bg: #09090b;
+      --text: #f0f0f0;
+      --caret-color: #f0f0f0;
+      --ghost: #555555;
+      --glow: rgba(255,255,255,0.15);
+    }
+
+    * { box-sizing: border-box; }
+
+    body::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+      opacity: 0.5;
+      mix-blend-mode: overlay;
+    }
+
+    body.departing {
+      opacity: 0;
+      transform: scale(0.96);
+      pointer-events: none;
+    }
+
+    form {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      z-index: 1;
+    }
+
+    .input-wrapper {
+      position: relative;
+      width: min(90vw, var(--container-width));
+      height: clamp(120px, 18vw, 160px);
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+      font-size: var(--font-size);
+      transform-origin: center;
+      transition: transform 0.05s ease-out;
+    }
+
+    .recoil { transform: scale(0.995); }
+
+    .typo {
+      font-family: inherit;
+      font-size: inherit;
+      line-height: normal;
+      letter-spacing: 0;
+      font-variant-ligatures: none;
+      font-weight: 500;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      text-shadow: 0 0 30px var(--glow);
+      transition: text-shadow 0.3s ease;
+    }
+
+    input[type="text"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      color: var(--text);
+      outline: none;
+      caret-color: transparent;
+      z-index: 2;
+      padding: 0;
+      padding-right: 60px;
+    }
+
+    .idle-caret {
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translate(0, -50%) scale(1);
+      width: 16px;
+      height: 1.1em;
+      background: var(--caret-color);
+      pointer-events: none;
+      z-index: 3;
+      border-radius: 0;
+      transform-origin: left center;
+      transition: transform 0.1s cubic-bezier(0.25, 1.5, 0.5, 1), background-color 0.2s, opacity 0.5s ease;
+      will-change: transform;
+      box-shadow: 0 0 20px var(--glow);
+    }
+
+    .ghost-text {
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translate(0, -50%);
+      color: var(--ghost);
+      pointer-events: none;
+      white-space: pre;
+      z-index: 1;
+      transition: transform 0.1s cubic-bezier(0.25, 1.5, 0.5, 1);
+      font-style: italic;
+      opacity: 0.6;
+    }
+
+    .measure {
+      position: absolute;
+      visibility: hidden;
+      white-space: pre;
+      pointer-events: none;
+      top: 0;
+      left: 0;
+    }
+
+    @media (max-width: 1024px) {
+      :root { --font-size: clamp(24px, 4.5vw + 0.5vh, 64px); }
+      body { padding-top: 26vh; }
+      .input-wrapper { height: clamp(100px, 18vw, 140px); }
+    }
+
+    @media (max-width: 640px) {
+      :root { --font-size: clamp(20px, 7vw + 0.5vh, 52px); }
+      body { padding-top: 20vh; padding-inline: 16px; }
+      .input-wrapper { height: clamp(80px, 20vw, 120px); width: 100%; }
+    }
+
+    @media (max-height: 540px) and (orientation: landscape) {
+      body { padding-top: 14vh; }
+      .input-wrapper { height: clamp(80px, 18vh, 120px); }
+    }
+
+    .blink { animation: blink 1s steps(1) infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    .flash-brand { animation: flash-color 0.5s ease forwards; }
+    @keyframes flash-color {
+      0% { background: var(--caret-color); transform: translate(0, -50%) scale(1); }
+      30% { background: var(--flash-color); box-shadow: 0 0 50px var(--flash-color); transform: translate(0, -50%) scale(1.4, 0.8); }
+      100% { background: var(--caret-color); transform: translate(0, -50%) scale(1); }
+    }
+
+    .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+    @keyframes shake {
+      10%, 90% { transform: translate3d(-1px, 0, 0); }
+      20%, 80% { transform: translate3d(2px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-3px, 0, 0); }
+      40%, 60% { transform: translate3d(3px, 0, 0); }
+    }
+  </style>
+</head>
+<body>
+
+  <form id="search-form" action="https://www.google.com/search" method="get" autocomplete="off">
+    <div class="input-wrapper">
+      <div id="measure" class="measure typo"></div>
+      <div class="idle-caret"></div>
+      <div id="ghost" class="ghost-text typo"></div>
+      <input id="q" type="text" name="q" class="typo" autofocus autocomplete="off" aria-label="搜索">
+    </div>
+  </form>
+
+  <script>
+    const engines = {
+      g:  { action: 'https://www.google.com/search', param: 'q', color: '#4285F4' },
+      b:  { action: 'https://www.baidu.com/s',       param: 'wd', color: '#2932E1' },
+      bi: { action: 'https://www.bing.com/search',   param: 'q', color: '#00809d' },
+      gh: { action: 'https://github.com/search',     param: 'q', color: '#A371F7' },
+      v:  { action: 'https://search.bilibili.com/all', param: 'keyword', color: '#FB7299' },
+      z:  { action: 'https://www.zhihu.com/search',  param: 'q', color: '#0084FF' },
+      y:  { action: 'https://www.youtube.com/results', param: 'search_query', color: '#FF0000' }
+    };
+
+    const input = document.getElementById('q');
+    const form = document.getElementById('search-form');
+    const caret = document.querySelector('.idle-caret');
+    const measure = document.getElementById('measure');
+    const ghost = document.getElementById('ghost');
+    const inputWrapper = document.querySelector('.input-wrapper');
+
+    const CURSOR_GAP = 15;
+    let history = JSON.parse(sessionStorage.getItem('searchHistory')) || [];
+    history = history.map(item => (typeof item === 'string' ? item.trim() : '')).filter(item => item);
+    history = history.filter((item, idx) => idx === 0 || history[idx - 1] !== item);
+    let historyIndex = -1;
+    let tempInput = '';
+    let calcResult = null;
+    let blinkTimeout = null;
+    let jellyTimeout = null;
+
+    const syncStyles = () => {
+      const computed = window.getComputedStyle(input);
+      measure.style.font = computed.font;
+      measure.style.letterSpacing = computed.letterSpacing;
+      measure.style.fontVariantLigatures = computed.fontVariantLigatures;
+      measure.style.lineHeight = computed.lineHeight;
+    };
+
+    const updateUI = () => {
+      const val = input.value;
+      measure.textContent = val;
+
+      const textWidth = measure.getBoundingClientRect().width;
+      const containerWidth = inputWrapper.clientWidth;
+      const cursorWidth = 16;
+      const gap = val.length ? CURSOR_GAP : 0;
+
+      const rawLeft = textWidth + gap - input.scrollLeft;
+      const finalLeft = Math.max(0, Math.min(rawLeft, containerWidth - cursorWidth - 2));
+
+      const moveTransform = `translate(${finalLeft}px, -50%) scale(1.3, 0.85)`;
+      const restTransform = `translate(${finalLeft}px, -50%) scale(1, 1)`;
+
+      caret.style.transform = moveTransform;
+
+      if (calcResult !== null) {
+        ghost.textContent = `= ${calcResult}`;
+        ghost.style.transform = `translate(${finalLeft + 25}px, -50%)`;
+      } else {
+        ghost.textContent = '';
+      }
+
+      caret.classList.remove('blink');
+      caret.style.opacity = 1;
+
+      clearTimeout(jellyTimeout);
+      jellyTimeout = setTimeout(() => {
+        caret.style.transform = restTransform;
+      }, 100);
+
+      clearTimeout(blinkTimeout);
+      blinkTimeout = setTimeout(() => {
+        caret.classList.add('blink');
+      }, 500);
+    };
+
+    const tryCalc = (val) => {
+      if (!val || val.endsWith(' ')) return null;
+      const expr = val.trim();
+      if (!/[+\-*/]/.test(expr)) return null;
+
+      const tokens = [];
+      let num = '';
+      for (let i = 0; i < expr.length; i++) {
+        const ch = expr[i];
+        if (/\d/.test(ch) || ch === '.') {
+          if (ch === '.' && num.includes('.')) return null;
+          num += ch;
+          continue;
+        }
+        if (/\s/.test(ch)) continue;
+        if ('+-*/()'.includes(ch)) {
+          if (num) { tokens.push(num); num = ''; }
+          tokens.push(ch);
+        } else {
+          return null;
+        }
+      }
+      if (num) tokens.push(num);
+      if (!tokens.length) return null;
+
+      const output = [];
+      const ops = [];
+      const precedence = { '+': 1, '-': 1, '*': 2, '/': 2 };
+
+      const pushOp = (op) => {
+        while (ops.length) {
+          const top = ops[ops.length - 1];
+          if (top === '(') break;
+          if (precedence[top] >= precedence[op]) output.push(ops.pop());
+          else break;
+        }
+        ops.push(op);
+      };
+
+      let prevToken = null;
+      for (const tok of tokens) {
+        if (!isNaN(tok)) {
+          if (!/^\d+(\.\d+)?$/.test(tok)) return null;
+          output.push(parseFloat(tok));
+          prevToken = 'num';
+          continue;
+        }
+        if (tok === '(') {
+          ops.push(tok);
+          prevToken = '(';
+          continue;
+        }
+        if (tok === ')') {
+          while (ops.length && ops[ops.length - 1] !== '(') output.push(ops.pop());
+          if (ops.pop() !== '(') return null;
+          prevToken = ')';
+          continue;
+        }
+        if ('+-*/'.includes(tok)) {
+          if (tok === '-' && (prevToken === null || prevToken === '(' || prevToken === 'op')) {
+            output.push(0);
+          } else if (prevToken === 'op' || prevToken === null) {
+            return null;
+          }
+          pushOp(tok);
+          prevToken = 'op';
+          continue;
+        }
+        return null;
+      }
+
+      while (ops.length) {
+        const op = ops.pop();
+        if (op === '(') return null;
+        output.push(op);
+      }
+
+      const stack = [];
+      for (const item of output) {
+        if (typeof item === 'number') { stack.push(item); continue; }
+        const b = stack.pop(), a = stack.pop();
+        if (a === undefined || b === undefined) return null;
+        switch (item) {
+          case '+': stack.push(a + b); break;
+          case '-': stack.push(a - b); break;
+          case '*': stack.push(a * b); break;
+          case '/': stack.push(b === 0 ? NaN : a / b); break;
+          default: return null;
+        }
+      }
+
+      if (stack.length !== 1 || !isFinite(stack[0])) return null;
+      const res = stack[0];
+      if (String(res) === expr) return null;
+      return res;
+    };
+
+    const switchEngine = (eng) => {
+      form.action = eng.action;
+      input.name = eng.param;
+      document.body.style.setProperty('--flash-color', eng.color);
+      input.value = '';
+      input.scrollLeft = 0;
+      caret.style.transition = 'none';
+      ghost.style.transition = 'none';
+      updateUI();
+      void caret.offsetWidth;
+      caret.classList.remove('blink');
+      caret.classList.remove('flash-brand');
+      void caret.offsetWidth;
+      caret.classList.add('flash-brand');
+      setTimeout(() => {
+        caret.classList.remove('flash-brand');
+        caret.style.transition = 'transform 0.1s cubic-bezier(0.25, 1.5, 0.5, 1), background-color 0.2s, opacity 0.5s ease';
+        ghost.style.transition = 'transform 0.1s cubic-bezier(0.25, 1.5, 0.5, 1)';
+        caret.classList.add('blink');
+      }, 500);
+    };
+
+    const toggleTheme = (mode) => {
+      if (mode === 'dark') document.body.classList.add('dark');
+      else document.body.classList.remove('dark');
+      setTimeout(updateUI, 50);
+    };
+
+    const isLikelyUrl = (raw) => {
+      const val = raw.trim();
+      if (!val || /\s/.test(val)) return false;
+
+      const blockedSchemes = new Set(['javascript', 'data', 'vbscript']);
+
+      const schemeMatch = val.match(/^([a-z][a-z0-9+.-]*):\/\//i);
+      if (schemeMatch) return !blockedSchemes.has(schemeMatch[1].toLowerCase());
+
+      try {
+        const url = new URL(val);
+        const proto = url.protocol.replace(':', '').toLowerCase();
+        if (blockedSchemes.has(proto)) return false;
+        return proto === 'http' || proto === 'https';
+      } catch (_) {}
+
+      const [host, ...restParts] = val.split('/');
+      const hostPattern = /^(localhost|\d{1,3}(?:\.\d{1,3}){3}|[a-z0-9-]+(?:\.[a-z0-9-]+)+)(?::\d{2,5})?$/i;
+      if (!hostPattern.test(host)) return false;
+      if (!restParts.length) return true;
+      return !/\s/.test(restParts.join('/'));
+    };
+
+    const triggerShake = () => {
+      inputWrapper.classList.remove('shake');
+      void inputWrapper.offsetWidth;
+      inputWrapper.classList.add('shake');
+    };
+
+    const triggerRecoil = () => {
+      inputWrapper.classList.remove('recoil');
+      void inputWrapper.offsetWidth;
+      inputWrapper.classList.add('recoil');
+      setTimeout(() => inputWrapper.classList.remove('recoil'), 50);
+    };
+
+    input.addEventListener('input', () => {
+      calcResult = tryCalc(input.value);
+      historyIndex = -1;
+      triggerRecoil();
+      updateUI();
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === ' ') {
+        const val = input.value;
+        if (val.startsWith('/')) {
+          const key = val.slice(1).toLowerCase();
+          if (engines[key]) {
+            e.preventDefault();
+            switchEngine(engines[key]);
+            return;
+          }
+          if (key === 'dark') {
+            e.preventDefault();
+            toggleTheme('dark');
+            input.value = '';
+            updateUI();
+            return;
+          }
+          if (key === 'light') {
+            e.preventDefault();
+            toggleTheme('light');
+            input.value = '';
+            updateUI();
+            return;
+          }
+        }
+      }
+
+      if (e.key === 'Escape') {
+        input.value = '';
+        historyIndex = -1;
+        updateUI();
+        return;
+      }
+      if (e.key === 'Tab' && calcResult !== null) {
+        e.preventDefault();
+        input.value = calcResult;
+        calcResult = null;
+        updateUI();
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (history.length) {
+          if (historyIndex === -1) tempInput = input.value;
+          historyIndex = Math.min(historyIndex + 1, history.length - 1);
+          input.value = history[history.length - 1 - historyIndex];
+          updateUI();
+        }
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (historyIndex > -1) {
+          historyIndex--;
+          input.value = historyIndex === -1 ? tempInput : history[history.length - 1 - historyIndex];
+          updateUI();
+        }
+      }
+      if (e.key === 'Enter') {
+        const val = input.value.trim();
+        if (val.startsWith('/') && !val.includes(' ')) {
+          e.preventDefault();
+          triggerShake();
+        }
+      }
+    });
+
+    form.addEventListener('submit', (e) => {
+      const val = input.value.trim();
+      if (!val) { e.preventDefault(); return; }
+
+      if (val.startsWith('/') && !val.includes(' ')) {
+        e.preventDefault();
+        triggerShake();
+        return;
+      }
+
+      if (history[history.length - 1] !== val) {
+        history.push(val);
+        if (history.length > 50) history.shift();
+        sessionStorage.setItem('searchHistory', JSON.stringify(history));
+      }
+
+      e.preventDefault();
+      document.body.classList.add('departing');
+
+      setTimeout(() => {
+        if (isLikelyUrl(val)) {
+          window.location.href = val.startsWith('http') ? val : 'http://' + val;
+        } else {
+          const engineParam = input.name;
+          const engineUrl = form.action;
+          window.location.href = `${engineUrl}?${engineParam}=${encodeURIComponent(val)}`;
+        }
+      }, 300);
+    });
+
+    window.addEventListener('pageshow', () => {
+      document.body.classList.remove('departing');
+      caret.classList.add('blink');
+    });
+
+    window.addEventListener('resize', () => { syncStyles(); updateUI(); });
+    input.addEventListener('scroll', updateUI);
+    input.addEventListener('focus', updateUI);
+    document.body.addEventListener('click', () => input.focus());
+    inputWrapper.addEventListener('animationend', () => inputWrapper.classList.remove('shake'));
+
+    setTimeout(() => { syncStyles(); updateUI(); }, 10);
+  </script>
+</body>
+</html>
