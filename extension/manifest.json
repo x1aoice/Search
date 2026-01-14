@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Search",
+  "version": "1.0",
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "icons": {
+    "128": "icon.png"
+  },
+  "offline_enabled": true,
+  "incognito": "split"
+}
